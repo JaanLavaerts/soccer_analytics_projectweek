@@ -1,4 +1,4 @@
-socceraction===1.5.3
+socceraction===1.4.2
 pandas===2.2.3
 matplotsoccer===0.0.8
 multimethod===1.12
