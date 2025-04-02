@@ -10,8 +10,6 @@ from tqdm import tqdm
 from datetime import timedelta
 import numpy as np
 
-
-
 dotenv.load_dotenv()
 
 logging.basicConfig(
@@ -69,10 +67,7 @@ print("\n")
 
 print("First 5 rows of the match events table:")
 get_table_rows("matchevents", limit=5)
-
-print("\n")
-print("\n")
-# -----------------------
+print("\n\n")
 
 print("Info about player tracking table:")
 get_table_info("player_tracking")
@@ -81,13 +76,7 @@ print("\n")
 
 print("First 5 rows of the player tracking table:")
 get_table_rows("player_tracking", limit=20)
-
 print("We can map the timestamps to see where the players are when the other team is doing attacking events.")
-
-
-
-
-
 
 # --- Helpers ---
 def convert_to_absolute_time(df, time_column):
@@ -96,13 +85,39 @@ def convert_to_absolute_time(df, time_column):
     df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
     return df
 
+def visualize_pressing_trap_locations(press_df, ball_df):
+    logger.info("Plotting all pressing trap locations")
+
+    ball_df = ball_df[["abs_time", "x", "y"]].dropna()
+    press_df = press_df.copy()
+    press_df["abs_time"] = press_df["time"]
+
+    # Merge to get ball locations at pressing trap times
+    trap_locations = pd.merge_asof(
+        press_df.sort_values("abs_time"),
+        ball_df.sort_values("abs_time"),
+        on="abs_time",
+        direction="nearest",
+        tolerance=pd.Timedelta(seconds=1)
+    ).dropna(subset=["x", "y"])
+
+    if trap_locations.empty:
+        logger.warning("No matching ball positions found for pressing trap times.")
+        return
+
+    pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
+    fig, ax = pitch.draw(figsize=(10, 7))
+    pitch.scatter(trap_locations["x"], trap_locations["y"], ax=ax, s=100, color="red", edgecolors="black", alpha=0.7)
+    ax.set_title("Locations of Coordinated Pressing Traps")
+    plt.show()
+
 # --- Main Function ---
 def detect_coordinated_presses(
     match_id,
     our_team_id,
     distance_threshold=8,
     speed_threshold=2.5,
-    time_window_ms=500,
+    time_window_ms=700,
     visual_debug=True
 ):
     logger.info("Loading data from database...")
@@ -209,8 +224,9 @@ def detect_coordinated_presses(
         ax.set_title(f"Pressing Trap Snapshot\nTime: {first_time}")
         plt.show()
 
-    return press_df
+    visualize_pressing_trap_locations(press_df, ball_df)
 
+    return press_df
 
 # --- Example usage ---
 detect_coordinated_presses(
