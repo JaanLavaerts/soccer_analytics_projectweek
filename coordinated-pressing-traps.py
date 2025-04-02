@@ -226,6 +226,11 @@ def detect_coordinated_presses(
     events_df = pd.read_sql(f"SELECT * FROM matchevents WHERE match_id = '{match_id}'", conn)
     tracking_df = pd.read_sql(f"SELECT * FROM player_tracking WHERE game_id = '{match_id}'", conn)
 
+    tracking_df = tracking_df[
+        (tracking_df["x"] >= -1) & (tracking_df["x"] <= 121) &
+        (tracking_df["y"] >= -1) & (tracking_df["y"] <= 81)
+        ]
+
     events_df["timestamp"] = pd.to_timedelta(events_df["timestamp"])
     tracking_df["timestamp"] = pd.to_timedelta(tracking_df["timestamp"])
 
