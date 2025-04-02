@@ -76,86 +76,6 @@ get_table_rows("player_tracking", limit=20)
 print("We can map the timestamps to see where the players are when the other team is doing attacking events.")
 
 
-def unoccupied_defensive_spaces(match_id, our_team_id):
-    # Load match data
-    events_query = f"SELECT * FROM matchevents WHERE match_id = '{match_id}'"
-    events_df = pd.read_sql(events_query, conn)
-
-    tracking_query = f"SELECT * FROM player_tracking WHERE game_id = '{match_id}'"
-    tracking_df = pd.read_sql(tracking_query, conn)
-
-    # Convert timestamps
-    events_df["timestamp"] = pd.to_timedelta(events_df["timestamp"])
-    tracking_df["timestamp"] = pd.to_timedelta(tracking_df["timestamp"])
-
-    # Align all timestamps to absolute time (based on period_id)
-    def convert_to_absolute_time(df, time_column):
-        df = df.copy()
-        df["abs_time"] = df[time_column]
-        df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
-        # Optional: handle period 3/4 for extra time if needed
-        return df
-
-    events_df = convert_to_absolute_time(events_df, "timestamp")
-    tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
-
-    # Opponent attacking moments (keep as pandas Series!)
-    opponent_attack_events = events_df[events_df["ball_owning_team"] != our_team_id]
-    opponent_times = opponent_attack_events["abs_time"]
-
-    # Get your players
-    our_players = events_df[
-        (events_df["team_id"] == our_team_id) &
-        (events_df["player_id"].notnull())
-    ]["player_id"].unique()
-
-    # Filter tracking for only our players
-    our_tracking = tracking_df[tracking_df["player_id"].isin(our_players)]
-
-    # Match tracking timestamps within ±200ms of opponent attack events
-    time_window = timedelta(milliseconds=200)
-
-    all_defensive_snapshots = []
-
-    for opp_time in tqdm(opponent_times, desc="Processing opponent events"):
-        nearby = our_tracking[
-            (our_tracking["abs_time"] >= opp_time - time_window) &
-            (our_tracking["abs_time"] <= opp_time + time_window)
-        ]
-        all_defensive_snapshots.append(nearby)
-
-    all_defense = pd.concat(all_defensive_snapshots, ignore_index=True)
-    print("Total defensive tracking points found:", len(all_defense))
-
-    if all_defense.empty:
-        print("⚠️ No defensive tracking data matched the opponent attack moments.")
-        return
-
-    # Plot heatmap
-    pitch = mplsoccer.Pitch(pitch_type='statsbomb', pitch_color='white', line_color='black')
-    fig, ax = pitch.draw(figsize=(10, 7))
-
-    x = all_defense["x"].values
-    y = all_defense["y"].values
-
-    bin_statistic = pitch.bin_statistic(x, y, statistic='count', bins=(30, 20), normalize=True)
-    pcm = pitch.heatmap(bin_statistic, ax=ax, cmap='viridis_r')  # bright = less presence
-
-    fig.colorbar(pcm, ax=ax, label='Defensive Presence\n(Normalized)')
-    ax.set_title(f"Unoccupied Defensive Spaces\nMatch ID: {match_id}", fontsize=14)
-
-    plt.show()
-
-# unoccupied_defensive_spaces(match_id="5pcyhm34h5c948yji4oryevpw", our_team_id="bw9wm8pqfzcchumhiwdt2w15c")
-# unoccupied_defensive_spaces(match_id="602pbgoexz07st4msln8fq0wk", our_team_id="bw9wm8pqfzcchumhiwdt2w15c")
-# unoccupied_defensive_spaces(match_id="61xmh1s2xtwsx4noo7sqj6k2c", our_team_id="bw9wm8pqfzcchumhiwdt2w15c")
-
-
-
-
-
-
-
 
 
 
@@ -166,95 +86,65 @@ def convert_to_absolute_time(df, time_column):
     df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
     return df
 
-def summarize_defensive_coverage(match_id, our_team_id, bin_x=6, bin_y=3):
-    # Load data
+
+
+def detect_coordinated_presses(match_id, our_team_id, distance_threshold=10, speed_threshold=2.5, time_window_ms=1000):
+    # --- Load and prepare data ---
     events_df = pd.read_sql(f"SELECT * FROM matchevents WHERE match_id = '{match_id}'", conn)
     tracking_df = pd.read_sql(f"SELECT * FROM player_tracking WHERE game_id = '{match_id}'", conn)
 
-    # Timestamps
     events_df["timestamp"] = pd.to_timedelta(events_df["timestamp"])
     tracking_df["timestamp"] = pd.to_timedelta(tracking_df["timestamp"])
 
     events_df = convert_to_absolute_time(events_df, "timestamp")
     tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
 
-    # Opponent attacking timestamps
-    opponent_attack_events = events_df[events_df["ball_owning_team"] != our_team_id]
-    attack_times = opponent_attack_events["abs_time"]
+    # Only use moments when the opponent has the ball
+    opponent_events = events_df[events_df["ball_owning_team"] != our_team_id]
+    opponent_times = opponent_events["abs_time"].unique()
 
-    # Players
-    our_players = events_df[(events_df["team_id"] == our_team_id) & events_df["player_id"].notnull()]["player_id"].unique()
-    our_tracking = tracking_df[tracking_df["player_id"].isin(our_players)]
-    ball_tracking = tracking_df[tracking_df["player_id"] == "ball"]
+    # Filter relevant tracking data
+    ball_df = tracking_df[tracking_df["player_id"] == "ball"]
 
-    # Time window
-    time_window = timedelta(milliseconds=200)
+    our_players_ids = events_df[(events_df["team_id"] == our_team_id) & (events_df["player_id"].notnull())]["player_id"].unique()
+    our_players_df = tracking_df[tracking_df["player_id"].isin(our_players_ids)]
 
-    dist_info = []
+    # --- Compute velocities ---
+    our_players_df = our_players_df.sort_values(["player_id", "abs_time"])
+    our_players_df["vx"] = our_players_df.groupby("player_id")["x"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
+    our_players_df["vy"] = our_players_df.groupby("player_id")["y"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
 
-    for t in tqdm(attack_times, desc="Calculating distances"):
-        defenders = our_tracking[
-            (our_tracking["abs_time"] >= t - time_window) &
-            (our_tracking["abs_time"] <= t + time_window)
-        ][["x", "y"]].values
+    # Merge player and ball tracking per frame
+    merged = our_players_df.merge(ball_df[["abs_time", "x", "y"]], on="abs_time", suffixes=("", "_ball"))
+    merged = merged[merged["abs_time"].isin(opponent_times)]  # Only analyze moments when opponent has ball
 
-        ball_pos = ball_tracking[
-            (ball_tracking["abs_time"] >= t - time_window) &
-            (ball_tracking["abs_time"] <= t + time_window)
-        ][["x", "y"]].values
+    # --- Compute pressing vector metrics ---
+    merged["dx"] = merged["x_ball"] - merged["x"]
+    merged["dy"] = merged["y_ball"] - merged["y"]
+    merged["dist_to_ball"] = np.sqrt(merged["dx"]**2 + merged["dy"]**2)
+    merged["speed_toward_ball"] = (merged["vx"] * merged["dx"] + merged["vy"] * merged["dy"]) / merged["dist_to_ball"]
 
-        for b in ball_pos:
-            if len(defenders) == 0:
-                continue
-            dists = np.sqrt(((defenders - b) ** 2).sum(axis=1))
-            min_dist = dists.min()
-            dist_info.append((b[0], b[1], min_dist))
+    # Player is pressing if they are close AND moving quickly toward the ball
+    merged["pressing"] = (merged["dist_to_ball"] <= distance_threshold) & (merged["speed_toward_ball"] > speed_threshold)
 
-    # Turn into DataFrame
-    dist_df = pd.DataFrame(dist_info, columns=["x", "y", "min_dist"])
+    # --- Aggregate into pressing moments ---
+    window = timedelta(milliseconds=time_window_ms)
+    press_events = []
 
-    if dist_df.empty:
-        print("⚠️ No distance data found. Check timestamps or data.")
-        return
+    for time in tqdm(merged["abs_time"].unique(), desc="Scanning for coordinated presses"):
+        frame = merged[merged["abs_time"].between(time - window, time + window)]
+        press_count = frame["pressing"].sum()
+        if press_count >= 3:  # Threshold for coordination
+            press_events.append((time, press_count))
 
-    # Bin into zones
-    pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
-    bin_stat = pitch.bin_statistic(dist_df["x"], dist_df["y"], statistic='mean', values=dist_df["min_dist"], bins=(bin_x, bin_y))
-    unoccupied_count = pitch.bin_statistic(dist_df["x"], dist_df["y"], statistic='count', bins=(bin_x, bin_y))
-    unoccupied_mask = dist_df["min_dist"] > 10
-    unoccupied_zone = pitch.bin_statistic(
-        dist_df["x"][unoccupied_mask],
-        dist_df["y"][unoccupied_mask],
-        statistic='count',
-        bins=(bin_x, bin_y)
-    )
-
-    avg_distance = bin_stat["statistic"]
-    total_points = unoccupied_count["statistic"]
-    unoccupied_ratio = np.divide(unoccupied_zone["statistic"], total_points, out=np.zeros_like(total_points), where=total_points != 0)
-
-    # Show table
-    zone_table = []
-    for j in range(bin_y):  # y = rows
-        for i in range(bin_x):  # x = columns
-            zone_label = f"Zone ({i+1},{j+1})"
-            avg_dist = round(avg_distance[j, i], 2) if not np.isnan(avg_distance[j, i]) else None
-            unocc = round(unoccupied_ratio[j, i]*100, 1) if total_points[j, i] > 0 else None
-            zone_table.append([zone_label, avg_dist, unocc])
-
-    zone_df = pd.DataFrame(zone_table, columns=["Zone", "Avg Distance (m)", "% Unoccupied"])
-    print(tabulate(zone_df, headers="keys", tablefmt="psql"))
-
-    # Plot heatmap
-    fig, ax = pitch.draw(figsize=(10, 7))
-    pcm = pitch.heatmap(bin_stat, ax=ax, cmap="plasma", edgecolors="black")
-    fig.colorbar(pcm, ax=ax, label="Avg Distance of ball to Nearest Defender")
-    ax.set_title(f"Ball Position Coverage\nMatch ID: {match_id}", fontsize=14)
-    plt.show()
+    press_df = pd.DataFrame(press_events, columns=["time", "num_pressers"])
+    print(tabulate(press_df.head(10), headers="keys", tablefmt="psql"))
+    print(f"\nTotal coordinated pressing moments found: {len(press_df)}")
+    return press_df
 
 
-summarize_defensive_coverage(
+# Example usage:
+detect_coordinated_presses(
     match_id="61xmh1s2xtwsx4noo7sqj6k2c",
     our_team_id="bw9wm8pqfzcchumhiwdt2w15c"
 )
-
