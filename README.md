@@ -1,77 +1,69 @@
-# OHL project week
+# Where do unoccupied spaces regularly appear in defense?
+Helps detect consistent blind spots. Useful for adjusting positioning or player roles
 
-# How to Fork and Collaborate on This Repository
+# 🛠️ What I Did Technically
+I combined multiple powerful layers of insight:
 
-This repository is designed to help collaborate effectively. Follow these steps to fork the project and contribute:
 
-## Step 1: Fork the Repository
-1. Go to the GitHub page of this repository.
-2. Click the **Fork** button in the top-right corner of the page.
-3. This will create a copy of the repository under your GitHub account.
 
-## Step 2: Clone Your Fork
-1. Navigate to your forked repository on GitHub.
-2. Click the **Code** button and copy the repository URL.
-3. Open a terminal and run the following command to clone the repository to your local machine:
-   ```bash
-   git clone <your-fork-url>
-   ```
-4. Replace `<your-fork-url>` with the URL you copied.
+1) I filtered for opponent attacks only → focused context ✔️
+2) I isolated Ir own defenders during those moments → right perspective ✔️
+3) I tracked the ball location for every timestamp ✔️
+4) I measured the distance between the ball and nearest defender per moment → tactical proximity ✔️
+5) I divided the pitch into zones (6×3) and:
+   - Calculated average distance to the nearest defender
+   - Counted % of time that zone was “unoccupied” (distance > 10 meters)
 
-## Step 3: Set Up the Upstream Repository
-1. Navigate to the cloned repository on your local machine:
-   ```bash
-   cd <repository-folder>
-   ```
-2. Add the original repository as the upstream remote:
-   ```bash
-   git remote add upstream <original-repo-url>
-   ```
-3. Replace `<original-repo-url>` with the URL of this repository.
-4. Verify the remotes:
-   ```bash
-   git remote -v
-   ```
+# 📊 What the Output Tells Us
+Example from your zone table:
 
-## Step 4: Sync Your Fork with the Upstream Repository
-1. Fetch the latest changes from the upstream repository:
-   ```bash
-   git fetch upstream
-   ```
-2. Merge the changes into your local main branch:
-   ```bash
-   git checkout main
-   git merge upstream/main
-   ```
 
-## Step 5: Make Changes and Commit
-1. Create a new branch for your changes:
-   ```bash
-   git checkout -b <branch-name>
-   ```
-2. Make your changes and save them.
-3. Stage and commit your changes:
-   ```bash
-   git add .
-   git commit -m "<commit-message>"
-   ```
-4. Replace `<commit-message>` with a meaningful description of your changes.
+| Zone       | Avg Distance (m) | % Unoccupied |
+|------------|------------------|--------------|
+| Zone (1,1) | 3.32             | 0            |
+| Zone (2,1) | 4.09             | 5            |
+| Zone (3,1) | 4.24             | 6.5          |
+| Zone (4,1) | 3.19             | 0            |
+| Zone (5,1) | 4.47             | 6.2          |
+| Zone (6,1) | nan              | nan          |
+| Zone (1,2) | 6.08             | 30           |
+| Zone (2,2) | 9.93             | 42.9         |
+| Zone (3,2) | 6.09             | 21.4         |
+| Zone (4,2) | 11.19            | 35.3         |
+| Zone (5,2) | 5.58             | 15.4         |
+| Zone (6,2) | 9.12             | 50           |
+| Zone (1,3) | 6.95             | 33.3         |
+| Zone (2,3) | 7.77             | 40           |
+| Zone (3,3) | 6.15             | 25           |
+| Zone (4,3) | 8.36             | 21.4         |
+| Zone (5,3) | 5.85             | 14.3         |
+| Zone (6,3) | nan              | nan          |
 
-## Step 6: Push Your Changes
-1. Push your branch to your forked repository:
-   ```bash
-   git push origin <branch-name>
-   ```
+![Heatmap Avg Distance Ball to Nearest Player](output/Screenshot%202025-04-02%20at%2011.40.10.png)
 
-## Step 7: Create a Pull Request
-1. Go to your forked repository on GitHub.
-2. Click the **Compare & pull request** button.
-3. Add a title and description for your pull request.
-4. Click **Create pull request** to submit your changes for review.
+This tells you where the ball often is while your nearest defender is far away.
 
-## Notes
-- Always sync your fork with the upstream repository when you want to see the newest knowlegde.
-- You work on your own fork, only if you wrote some code that you want to share with the rest of the groups, you create a pull request to the original repository.
-- Make sure to resolve any merge conflicts before creating a pull request.
-- Use descriptive commit messages to make it easier for others to understand your changes.
-- Be descriptive in your pull request to help reviewers understand your changes.
+💡 These zones are your blind spots during opponent attacks.
+
+The heatmap matches that — the most reddish zone is Zone (4,2), consistent with the table.
+
+# 📢 Clear Answer
+
+Unoccupied defensive spaces consistently appear in the central-right zones of the pitch during opponent attacks, specifically:
+- Zone (4,2) (middle-right): Avg distance = 11.2m, Unoccupied = 35.3%
+- Zone (6,2) (far-right): Unoccupied = 50%
+- Zone (2,2) (middle-left): Unoccupied = 42.9%
+
+These zones represent key blind spots, especially when the ball is there, suggesting defenders are:
+- Either slow to shift laterally, or
+- There's a structural gap in your defensive shape
+
+# 🧰 Could We Go Further?
+
+Yes, if we want to refine or expand:
+
+1) Separate by half or time period → does it get worse over time?
+2) Filter by event type → are we exposed more during opponent crosses?
+3) Animate sequences for top-3 risky zones → show it visually to a coach
+4) Show defensive density overlay → confirm the gap isn’t just a ball-side overload
+5) But even without those, this is already a strong, tactical data-backed answer.
