@@ -5,6 +5,8 @@ import os
 from tabulate import tabulate
 import mplsoccer
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+from datetime import timedelta
 
 dotenv.load_dotenv()
 
@@ -40,8 +42,8 @@ def get_table_info(table_name):
     df = pd.read_sql(query, conn)
     print(tabulate(df, headers="keys", tablefmt="psql"))
 
-def get_table_rows(table_name):
-    query = f"SELECT * FROM {table_name}"
+def get_table_rows(table_name, limit=5):
+    query = f"SELECT * FROM {table_name} LIMIT {limit}"
     df = pd.read_sql(query, conn)
     return df
 
@@ -55,60 +57,90 @@ get_table_info("matchevents")
 print("There is a timestamp column in the match events table.")
 print("\n")
 
+print("First 5 rows of the match events table:")
+match_events_df = get_table_rows("matchevents", limit=5)
+print(match_events_df)
+
+print("\n")
+print("\n")
+# -----------------------
+
 print("Info about player tracking table:")
 get_table_info("player_tracking")
 print("There is a timestamp column in the player tracking table.")
 print("\n")
 
+print("First 5 rows of the player tracking table:")
+player_tracking_df = get_table_rows("player_tracking", limit=5)
+print(player_tracking_df)
+
 print("We can map the timestamps to see where the players are when the other team is doing attacking events.")
 
+
 def unoccupied_defensive_spaces(match_id, our_team_id):
-    # Load only data for the selected match
+    # Load match data
     events_query = f"SELECT * FROM matchevents WHERE match_id = '{match_id}'"
     events_df = pd.read_sql(events_query, conn)
 
     tracking_query = f"SELECT * FROM player_tracking WHERE game_id = '{match_id}'"
     tracking_df = pd.read_sql(tracking_query, conn)
 
-    # Convert timestamps to datetime
-    events_df["timestamp"] = pd.to_datetime(events_df["timestamp"], errors='coerce')
-    tracking_df["timestamp"] = pd.to_datetime(tracking_df["timestamp"], errors='coerce')
+    # Convert timestamps
+    events_df["timestamp"] = pd.to_timedelta(events_df["timestamp"])
+    tracking_df["timestamp"] = pd.to_timedelta(tracking_df["timestamp"])
 
-    # Round both to the nearest second (or choose .round('100ms') if needed)
-    events_df["timestamp"] = events_df["timestamp"].dt.round("1s")
-    tracking_df["timestamp"] = tracking_df["timestamp"].dt.round("1s")
+    # Align all timestamps to absolute time (based on period_id)
+    def convert_to_absolute_time(df, time_column):
+        df = df.copy()
+        df["abs_time"] = df[time_column]
+        df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
+        # Optional: handle period 3/4 for extra time if needed
+        return df
 
-    # Get opponent attack timestamps
+    events_df = convert_to_absolute_time(events_df, "timestamp")
+    tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
+
+    # Opponent attacking moments (keep as pandas Series!)
     opponent_attack_events = events_df[events_df["ball_owning_team"] != our_team_id]
-    opponent_timestamps = opponent_attack_events["timestamp"].unique()
+    opponent_times = opponent_attack_events["abs_time"]
 
-    # Get our players on the pitch in this match
+    # Get your players
     our_players = events_df[
         (events_df["team_id"] == our_team_id) &
         (events_df["player_id"].notnull())
     ]["player_id"].unique()
 
-    # Filter tracking data for our players during opponent attacks
-    our_tracking_during_defense = tracking_df[
-        (tracking_df["player_id"].isin(our_players)) &
-        (tracking_df["timestamp"].isin(opponent_timestamps))
-    ]
+    # Filter tracking for only our players
+    our_tracking = tracking_df[tracking_df["player_id"].isin(our_players)]
 
-    print("Filtered tracking points:", len(our_tracking_during_defense))
+    # Match tracking timestamps within ±200ms of opponent attack events
+    time_window = timedelta(milliseconds=200)
 
-    if our_tracking_during_defense.empty:
-        print("⚠️ No tracking data found for the given match and conditions.")
+    all_defensive_snapshots = []
+
+    for opp_time in tqdm(opponent_times, desc="Processing opponent events"):
+        nearby = our_tracking[
+            (our_tracking["abs_time"] >= opp_time - time_window) &
+            (our_tracking["abs_time"] <= opp_time + time_window)
+        ]
+        all_defensive_snapshots.append(nearby)
+
+    all_defense = pd.concat(all_defensive_snapshots, ignore_index=True)
+    print("Total defensive tracking points found:", len(all_defense))
+
+    if all_defense.empty:
+        print("⚠️ No defensive tracking data matched the opponent attack moments.")
         return
 
-    # Plot the heatmap
+    # Plot heatmap
     pitch = mplsoccer.Pitch(pitch_type='statsbomb', pitch_color='white', line_color='black')
     fig, ax = pitch.draw(figsize=(10, 7))
 
-    x = our_tracking_during_defense["x"].values
-    y = our_tracking_during_defense["y"].values
+    x = all_defense["x"].values
+    y = all_defense["y"].values
 
     bin_statistic = pitch.bin_statistic(x, y, statistic='count', bins=(30, 20), normalize=True)
-    pcm = pitch.heatmap(bin_statistic, ax=ax, cmap='viridis_r')
+    pcm = pitch.heatmap(bin_statistic, ax=ax, cmap='viridis_r')  # bright = less presence
 
     fig.colorbar(pcm, ax=ax, label='Defensive Presence\n(Normalized)')
     ax.set_title(f"Unoccupied Defensive Spaces\nMatch ID: {match_id}", fontsize=14)
