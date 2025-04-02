@@ -1,5 +1,10 @@
+# Where do unoccupied spaces regularly appear in defense?
+Helps detect consistent blind spots. Useful for adjusting positioning or player roles
+
 # 🛠️ What I Did Technically
 I combined multiple powerful layers of insight:
+
+
 
 1) I filtered for opponent attacks only → focused context ✔️
 2) I isolated Ir own defenders during those moments → right perspective ✔️
