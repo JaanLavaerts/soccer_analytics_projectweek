@@ -1,0 +1,107 @@
+/Users/iannauwelaers/Documents/School/2024-2025/Semester2/Advanced_AI/InternationalWeek/soccer_analytics_projectweek/.venv/bin/python /Users/iannauwelaers/Documents/School/2024-2025/Semester2/Advanced_AI/InternationalWeek/soccer_analytics_projectweek/unoccupied-spaces.py
+Info about match events table:
++----+--------------------+-------------------+
+|    | column_name        | data_type         |
+|----+--------------------+-------------------|
+|  0 | match_id           | character varying |
+|  1 | event_id           | character varying |
+|  2 | eventtype_id       | character varying |
+|  3 | result             | character varying |
+|  4 | success            | boolean           |
+|  5 | period_id          | integer           |
+|  6 | timestamp          | character varying |
+|  7 | end_timestamp      | character varying |
+|  8 | ball_state         | character varying |
+|  9 | ball_owning_team   | character varying |
+| 10 | team_id            | character varying |
+| 11 | player_id          | character varying |
+| 12 | x                  | double precision  |
+| 13 | y                  | double precision  |
+| 14 | end_coordinates_x  | double precision  |
+| 15 | end_coordinates_y  | double precision  |
+| 16 | receiver_player_id | character varying |
++----+--------------------+-------------------+
+There is a timestamp column in the match events table.
+
+
+First 5 rows of the match events table:
++----+---------------------------+------------+--------------------------------------+------------+-----------+-------------+------------------------+------------------------+--------------+---------------------------+---------------------------+---------------------------+------+------+---------------------+---------------------+---------------------------+
+|    | match_id                  |   event_id | eventtype_id                         | result     | success   |   period_id | timestamp              | end_timestamp          | ball_state   | ball_owning_team          | team_id                   | player_id                 |    x |    y |   end_coordinates_x |   end_coordinates_y | receiver_player_id        |
+|----+---------------------------+------------+--------------------------------------+------------+-----------+-------------+------------------------+------------------------+--------------+---------------------------+---------------------------+---------------------------+------+------+---------------------+---------------------+---------------------------|
+|  0 | 5pcyhm34h5c948yji4oryevpw | 2704102295 | e319ac55-ffaf-4e6d-87f7-7601d91bcd33 | COMPLETE   | True      |           1 | 0 days 00:00:00.087000 | 0 days 00:00:01.627000 | alive        | cyrrlv6l1onld5x247w1q1jlr | cyrrlv6l1onld5x247w1q1jlr | 6g9x1y7xmjzwhk646v1iyuup5 | 50   | 50   |                37   |                49.3 | cfxzvlgvt9jj17qxq41t9sxcl |
+|  1 | 5qa6smqwjobwdm3j0okr0r09g | 2704166951 | e319ac55-ffaf-4e6d-87f7-7601d91bcd33 | COMPLETE   | True      |           1 | 0 days 00:00:00.025000 | 0 days 00:00:02.775000 | alive        | 89xivtxk59uzvhdsd6miao6tm | 89xivtxk59uzvhdsd6miao6tm | er6z557ns3jcjhgrsbtmsn6s4 | 49.7 | 50   |                33.6 |                38.6 | a3on8aipuz77wn25jm2r312lm |
+|  2 | 5pcyhm34h5c948yji4oryevpw | 2704102881 | e319ac55-ffaf-4e6d-87f7-7601d91bcd33 | COMPLETE   | True      |           1 | 0 days 00:00:01.627000 | 0 days 00:00:04.178000 | alive        | cyrrlv6l1onld5x247w1q1jlr | cyrrlv6l1onld5x247w1q1jlr | cfxzvlgvt9jj17qxq41t9sxcl | 39.1 | 48   |                32.3 |                38.9 | 2ky2kn7gpjorkyg9zyg68pk6i |
+|  3 | 5pcyhm34h5c948yji4oryevpw | 2704102909 | e319ac55-ffaf-4e6d-87f7-7601d91bcd33 | INCOMPLETE | False     |           1 | 0 days 00:00:04.178000 | NaT                    | alive        | cyrrlv6l1onld5x247w1q1jlr | cyrrlv6l1onld5x247w1q1jlr | 2ky2kn7gpjorkyg9zyg68pk6i | 36.3 | 36.4 |                69.7 |                16.7 |                           |
+|  4 | 5qa6smqwjobwdm3j0okr0r09g | 2704166961 | e319ac55-ffaf-4e6d-87f7-7601d91bcd33 | COMPLETE   | True      |           1 | 0 days 00:00:02.775000 | NaT                    | alive        | 89xivtxk59uzvhdsd6miao6tm | 89xivtxk59uzvhdsd6miao6tm | a3on8aipuz77wn25jm2r312lm | 33   | 37.4 |                65.5 |                59.9 |                           |
++----+---------------------------+------------+--------------------------------------+------------+-----------+-------------+------------------------+------------------------+--------------+---------------------------+---------------------------+---------------------------+------+------+---------------------+---------------------+---------------------------+
+
+
+
+
+Info about player tracking table:
++----+---------------+-------------------+
+|    | column_name   | data_type         |
+|----+---------------+-------------------|
+|  0 | id            | integer           |
+|  1 | game_id       | character varying |
+|  2 | frame_id      | bigint            |
+|  3 | timestamp     | character varying |
+|  4 | period_id     | integer           |
+|  5 | player_id     | character varying |
+|  6 | x             | double precision  |
+|  7 | y             | double precision  |
++----+---------------+-------------------+
+There is a timestamp column in the player tracking table.
+
+
+First 5 rows of the player tracking table:
++----+----------+---------------------------+---------------+-----------------+-------------+---------------------------+----------+----------+
+|    |       id | game_id                   |      frame_id | timestamp       |   period_id | player_id                 |        x |        y |
+|----+----------+---------------------------+---------------+-----------------+-------------+---------------------------+----------+----------|
+|  0 | 11980035 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | ball                      | 18.3134  | 17.7002  |
+|  1 | 11980036 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | dwnd8j9ok6ncbp69gmchw953o | 15.52    | 12.6188  |
+|  2 | 11980037 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | a8kdcx3797ityilpw31jaj4r9 | 79.7183  | 39.4009  |
+|  3 | 11980038 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 5pxm3apy9atp2w2j3r65ju2uh | 16.377   | 15.9332  |
+|  4 | 11980039 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 1gzgkjei16r4lt2fvcedy1jvt | 49.218   | 23.3437  |
+|  5 | 11980040 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 5w0ohhrm0ojscyjh3e0o8ffmd | 50.062   | 25.222   |
+|  6 | 11980041 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | d4ppxjyzxjk3fm4agxpsani8k | 18.9208  | 13.7455  |
+|  7 | 11980042 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | cslexkls1qmrj8nu746b4rv2s | 32.8151  | 15.1694  |
+|  8 | 11980043 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 96ml60jhhp13c1aaxmbi6ebqh | 45.803   | 42.4723  |
+|  9 | 11980044 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 41gpjj5od0ww4rnopzgp1oetw | 13.111   | 18.5692  |
+| 10 | 11980045 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | aegelvfjdhtpcwb2r63ixksgk | 16.375   | 50.8223  |
+| 11 | 11980046 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 5w8e01c5slboqdrlqnyljlnft |  3.11091 | 44.2424  |
+| 12 | 11980047 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 7weuixp1j81ga9pjhouf2h2hh | 23.0585  | 26.2667  |
+| 13 | 11980048 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 316lvgaj8k7301u0oqxp9lpex | 11.652   | 17.5981  |
+| 14 | 11980049 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 8jc7tw0nw37trgyli0oyz1soa | 35.1512  | 19.5251  |
+| 15 | 11980050 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 1e7snjsrbh93xt5ti1oyuqxka | 24.1488  | 14.5306  |
+| 16 | 11980051 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | a0ecz4nlxrr62dcwixtmjiwyy | 29.5679  | 45.5567  |
+| 17 | 11980052 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | f0ean6buvvp9l4rh1ayvnnill | 44.0856  |  8.92024 |
+| 18 | 11980053 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | 7mg9ycwc9ay4fdedl0dpp5nca | 16.255   | 52.7803  |
+| 19 | 11980054 | 6n8z4gyo5m3xo8sz52sbmuec4 | 1730062204360 | 00:35:04.360000 |           2 | earug82pg87gzwvm5yt1yd990 | 22.246   | 67.6816  |
++----+----------+---------------------------+---------------+-----------------+-------------+---------------------------+----------+----------+
+We can map the timestamps to see where the players are when the other team is doing attacking events.
+Calculating distances: 100%|██████████| 857/857 [00:02<00:00, 336.32it/s]
++----+------------+--------------------+----------------+
+|    | Zone       |   Avg Distance (m) |   % Unoccupied |
+|----+------------+--------------------+----------------|
+|  0 | Zone (1,1) |               3.32 |            0   |
+|  1 | Zone (2,1) |               4.09 |            5   |
+|  2 | Zone (3,1) |               4.24 |            6.5 |
+|  3 | Zone (4,1) |               3.19 |            0   |
+|  4 | Zone (5,1) |               4.47 |            6.2 |
+|  5 | Zone (6,1) |             nan    |          nan   |
+|  6 | Zone (1,2) |               6.08 |           30   |
+|  7 | Zone (2,2) |               9.93 |           42.9 |
+|  8 | Zone (3,2) |               6.09 |           21.4 |
+|  9 | Zone (4,2) |              11.19 |           35.3 |
+| 10 | Zone (5,2) |               5.58 |           15.4 |
+| 11 | Zone (6,2) |               9.12 |           50   |
+| 12 | Zone (1,3) |               6.95 |           33.3 |
+| 13 | Zone (2,3) |               7.77 |           40   |
+| 14 | Zone (3,3) |               6.15 |           25   |
+| 15 | Zone (4,3) |               8.36 |           21.4 |
+| 16 | Zone (5,3) |               5.85 |           14.3 |
+| 17 | Zone (6,3) |             nan    |          nan   |
++----+------------+--------------------+----------------+
+
+Process finished with exit code 0
