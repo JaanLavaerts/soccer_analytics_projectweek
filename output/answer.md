@@ -39,7 +39,7 @@ Example from your zone table:
 | Zone (5,3) | 5.85             | 14.3         |
 | Zone (6,3) | nan              | nan          |
 
-![Heatmap Avg Distance Ball to Nearest Player](Screenshot 2025-04-02 at 11.40.10.png)
+![Heatmap Avg Distance Ball to Nearest Player](Screenshot%202025-04-02%20at%2011.40.10.png)
 
 This tells you where the ball often is while your nearest defender is far away.
 
