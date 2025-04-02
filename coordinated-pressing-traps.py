@@ -39,6 +39,17 @@ def get_table_names():
     WHERE table_schema = 'public'
     """
     df = pd.read_sql(query, conn)
+    print(df["table_name"].tolist())
+
+get_table_names()
+
+def get_table_names():
+    query = """
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+    """
+    df = pd.read_sql(query, conn)
     return df["table_name"].tolist()
 
 def get_table_info(table_name):
@@ -74,9 +85,27 @@ get_table_info("player_tracking")
 print("There is a timestamp column in the player tracking table.")
 print("\n")
 
-print("First 5 rows of the player tracking table:")
+print("First 20 rows of the player tracking table:")
 get_table_rows("player_tracking", limit=20)
-print("We can map the timestamps to see where the players are when the other team is doing attacking events.")
+print("\n\n")
+
+print("Info about players in teams table:")
+get_table_info("players")
+print("There is a team_id column in the players table.")
+print("\n")
+
+print("First 5 rows of the players table:")
+get_table_rows("players", limit=5)
+print("\n\n")
+
+print("Info about player position")
+get_table_info("player_position")
+
+print("\n")
+print("First 5 rows of the players table:")
+get_table_rows("player_position", limit=5)
+
+
 
 # --- Helpers ---
 def convert_to_absolute_time(df, time_column):
@@ -85,31 +114,99 @@ def convert_to_absolute_time(df, time_column):
     df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
     return df
 
-def visualize_pressing_trap_locations(press_df, ball_df):
-    logger.info("Plotting all pressing trap locations")
+def visualize_pressing_trap_locations(press_df, ball_df, tracking_df, our_players_ids):
+    logger.info("Plotting pressing trap locations per half with goal direction")
 
-    ball_df = ball_df[["abs_time", "x", "y"]].dropna()
+    ball_df = ball_df[["abs_time", "x", "y", "period_id"]].dropna()
     press_df = press_df.copy()
     press_df["abs_time"] = press_df["time"]
 
-    # Merge to get ball locations at pressing trap times
     trap_locations = pd.merge_asof(
         press_df.sort_values("abs_time"),
         ball_df.sort_values("abs_time"),
         on="abs_time",
         direction="nearest",
         tolerance=pd.Timedelta(seconds=1)
-    ).dropna(subset=["x", "y"])
+    ).dropna(subset=["x", "y", "period_id"])
 
     if trap_locations.empty:
         logger.warning("No matching ball positions found for pressing trap times.")
         return
 
-    pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
-    fig, ax = pitch.draw(figsize=(10, 7))
-    pitch.scatter(trap_locations["x"], trap_locations["y"], ax=ax, s=100, color="red", edgecolors="black", alpha=0.7)
-    ax.set_title("Locations of Coordinated Pressing Traps")
-    plt.show()
+    # --- Use GK position to determine own goal side ---
+    gk_query = f"""
+        SELECT player_id, match_id, period_id
+        FROM player_position
+        WHERE position = 'GK'
+    """
+    gk_df = pd.read_sql(gk_query, conn)
+    our_gk_ids = gk_df[gk_df["player_id"].isin(our_players_ids)]["player_id"].unique()
+
+    if len(our_gk_ids) == 0:
+        logger.warning("No goalkeeper found for our team. Falling back to old method.")
+        use_gk_method = False
+    else:
+        use_gk_method = True
+        logger.info(f"Using goalkeeper(s) {our_gk_ids} to determine own goal side")
+
+    own_goal_by_period = {}
+    for period in [1, 2]:
+        if use_gk_method:
+            gk_tracking = tracking_df[
+                (tracking_df["period_id"] == period) &
+                (tracking_df["player_id"].isin(our_gk_ids))
+            ].copy()
+
+            if gk_tracking.empty:
+                logger.warning(f"No GK tracking data in period {period}. Falling back.")
+                use_gk_method = False
+            else:
+                gk_tracking = gk_tracking.sort_values("abs_time")
+                early_time = gk_tracking["abs_time"].min() + timedelta(seconds=5)
+                early_frames = gk_tracking[gk_tracking["abs_time"] <= early_time]
+                avg_x = early_frames["x"].mean()
+                own_goal_by_period[period] = "left" if avg_x < 60 else "right"
+                logger.info(f"Period {period}: GK average x = {avg_x:.2f} → Own goal on {own_goal_by_period[period]}")
+        if not use_gk_method:
+            # Fallback to previous method using defender median
+            logger.info("Falling back to defender-based goal side detection.")
+            period_df = tracking_df[
+                (tracking_df["period_id"] == period) &
+                (tracking_df["player_id"].isin(our_players_ids))
+            ].copy()
+            if period_df.empty:
+                own_goal_by_period[period] = "left"
+                continue
+            period_df = period_df.sort_values("abs_time")
+            earliest_time = period_df["abs_time"].min()
+            early_window = earliest_time + timedelta(seconds=5)
+            early_frames = period_df[period_df["abs_time"] <= early_window]
+            median_x = early_frames["x"].median()
+            own_goal_by_period[period] = "left" if median_x < 60 else "right"
+            logger.info(f"Period {period}: defender median x = {median_x:.2f} → Own goal on {own_goal_by_period[period]}")
+
+    # --- Plotting ---
+    for period in [1, 2]:
+        data = trap_locations[trap_locations["period_id"] == period].copy()
+        if data.empty:
+            logger.warning(f"No pressing traps found in period {period}")
+            continue
+
+        goal_side = own_goal_by_period[period]
+        data["x_adj"] = data["x"].apply(lambda x: 120 - x if goal_side == "right" else x)
+        data["y_adj"] = data["y"].apply(lambda y: 80 - y if goal_side == "right" else y)
+
+        pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
+        fig, ax = pitch.draw(figsize=(10, 7))
+        pitch.scatter(data["x_adj"], data["y_adj"], ax=ax, s=100, color="red", edgecolors="black", alpha=0.7)
+
+        if goal_side == "left":
+            ax.annotate("← Own Goal", xy=(5, 40), fontsize=12, color="blue", weight="bold")
+        else:
+            ax.annotate("Own Goal →", xy=(110, 40), fontsize=12, color="blue", weight="bold")
+
+        ax.set_title(f"Pressing Traps - Period {period} (Own Goal on {goal_side})")
+        plt.show()
 
 # --- Main Function ---
 def detect_coordinated_presses(
@@ -121,6 +218,11 @@ def detect_coordinated_presses(
     visual_debug=True
 ):
     logger.info("Loading data from database...")
+
+    # --- New: Load player info from reliable players table ---
+    players_df = pd.read_sql("SELECT * FROM players", conn)
+    our_players_ids = players_df[players_df["team_id"] == our_team_id]["player_id"].unique()
+
     events_df = pd.read_sql(f"SELECT * FROM matchevents WHERE match_id = '{match_id}'", conn)
     tracking_df = pd.read_sql(f"SELECT * FROM player_tracking WHERE game_id = '{match_id}'", conn)
 
@@ -130,27 +232,20 @@ def detect_coordinated_presses(
     events_df = convert_to_absolute_time(events_df, "timestamp")
     tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
 
-    # --- Filter to opponent ball possession moments ---
     opponent_events = events_df[events_df["ball_owning_team"] != our_team_id]
     opponent_times = opponent_events["abs_time"].dropna().unique()
     logger.info(f"Found {len(opponent_times)} opponent attack moments")
 
     ball_df = tracking_df[tracking_df["player_id"] == "ball"]
-    our_players_ids = events_df[
-        (events_df["team_id"] == our_team_id) & (events_df["player_id"].notnull())
-    ]["player_id"].unique()
     our_players_df = tracking_df[tracking_df["player_id"].isin(our_players_ids)]
     logger.info(f"Tracking data contains {len(our_players_ids)} defenders")
 
-    # --- Compute velocities ---
     our_players_df = our_players_df.sort_values(["player_id", "abs_time"])
     our_players_df["vx"] = our_players_df.groupby("player_id")["x"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
     our_players_df["vy"] = our_players_df.groupby("player_id")["y"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
 
-    # Merge player + ball data
     merged = our_players_df.merge(ball_df[["abs_time", "x", "y"]], on="abs_time", suffixes=("", "_ball"))
 
-    # Keep only tracking frames ±500ms around opponent possession
     time_window = timedelta(milliseconds=500)
     opponent_range = pd.Series(dtype="bool")
     for t in opponent_times:
@@ -164,14 +259,12 @@ def detect_coordinated_presses(
         logger.warning("No overlapping tracking frames with opponent events. Aborting.")
         return pd.DataFrame()
 
-    # --- Pressing detection ---
     merged["dx"] = merged["x_ball"] - merged["x"]
     merged["dy"] = merged["y_ball"] - merged["y"]
     merged["dist_to_ball"] = np.sqrt(merged["dx"]**2 + merged["dy"]**2)
     merged["speed_toward_ball"] = (merged["vx"] * merged["dx"] + merged["vy"] * merged["dy"]) / merged["dist_to_ball"]
     merged["pressing"] = (merged["dist_to_ball"] <= distance_threshold) & (merged["speed_toward_ball"] > speed_threshold)
 
-    # --- Aggregate by rolling window ---
     roll_window = timedelta(milliseconds=time_window_ms)
     press_events = []
 
@@ -184,7 +277,6 @@ def detect_coordinated_presses(
         if press_count >= 3:
             press_events.append((time, press_count))
 
-    # Sort pressing events by time
     press_df = pd.DataFrame(press_events, columns=["time", "num_pressers"])
     press_df = press_df.sort_values("time").reset_index(drop=True)
 
@@ -192,7 +284,6 @@ def detect_coordinated_presses(
     logger.info("Sample pressing moments:")
     logger.info("\n" + tabulate(press_df.head(10), headers="keys", tablefmt="psql"))
 
-    # --- Plotting: Pressers over time ---
     if not press_df.empty:
         fig, ax = plt.subplots(figsize=(10, 4))
         press_df["minute"] = press_df["time"].dt.total_seconds() / 60
@@ -206,7 +297,6 @@ def detect_coordinated_presses(
         plt.tight_layout()
         plt.show()
 
-    # --- Optional: Draw 1 pitch snapshot ---
     if visual_debug and not press_df.empty:
         logger.info("Showing 1 visual pressing moment for debug")
         pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
@@ -224,13 +314,14 @@ def detect_coordinated_presses(
         ax.set_title(f"Pressing Trap Snapshot\nTime: {first_time}")
         plt.show()
 
-    visualize_pressing_trap_locations(press_df, ball_df)
+    visualize_pressing_trap_locations(press_df, ball_df, tracking_df, our_players_ids)
 
     return press_df
 
+
 # --- Example usage ---
 detect_coordinated_presses(
-    match_id="61xmh1s2xtwsx4noo7sqj6k2c",
+    match_id="602pbgoexz07st4msln8fq0wk",
     our_team_id="bw9wm8pqfzcchumhiwdt2w15c",
     visual_debug=True
 )
