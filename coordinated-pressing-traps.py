@@ -89,19 +89,21 @@ print("We can map the timestamps to see where the players are when the other tea
 
 
 
+# --- Helpers ---
 def convert_to_absolute_time(df, time_column):
     df = df.copy()
     df["abs_time"] = df[time_column]
     df.loc[df["period_id"] == 2, "abs_time"] += timedelta(minutes=45)
     return df
 
+# --- Main Function ---
 def detect_coordinated_presses(
     match_id,
     our_team_id,
-    distance_threshold=12,
-    speed_threshold=1.5,
-    time_window_ms=1000,
-    visual_debug=False
+    distance_threshold=8,
+    speed_threshold=2.5,
+    time_window_ms=500,
+    visual_debug=True
 ):
     logger.info("Loading data from database...")
     events_df = pd.read_sql(f"SELECT * FROM matchevents WHERE match_id = '{match_id}'", conn)
@@ -113,7 +115,7 @@ def detect_coordinated_presses(
     events_df = convert_to_absolute_time(events_df, "timestamp")
     tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
 
-    # --- Get opponent ball moments ---
+    # --- Filter to opponent ball possession moments ---
     opponent_events = events_df[events_df["ball_owning_team"] != our_team_id]
     opponent_times = opponent_events["abs_time"].dropna().unique()
     logger.info(f"Found {len(opponent_times)} opponent attack moments")
@@ -130,10 +132,10 @@ def detect_coordinated_presses(
     our_players_df["vx"] = our_players_df.groupby("player_id")["x"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
     our_players_df["vy"] = our_players_df.groupby("player_id")["y"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
 
-    # Merge with ball positions
+    # Merge player + ball data
     merged = our_players_df.merge(ball_df[["abs_time", "x", "y"]], on="abs_time", suffixes=("", "_ball"))
 
-    # Keep only frames within ±500ms of opponent possession
+    # Keep only tracking frames ±500ms around opponent possession
     time_window = timedelta(milliseconds=500)
     opponent_range = pd.Series(dtype="bool")
     for t in opponent_times:
@@ -147,14 +149,14 @@ def detect_coordinated_presses(
         logger.warning("No overlapping tracking frames with opponent events. Aborting.")
         return pd.DataFrame()
 
-    # --- Detect pressing ---
+    # --- Pressing detection ---
     merged["dx"] = merged["x_ball"] - merged["x"]
     merged["dy"] = merged["y_ball"] - merged["y"]
     merged["dist_to_ball"] = np.sqrt(merged["dx"]**2 + merged["dy"]**2)
     merged["speed_toward_ball"] = (merged["vx"] * merged["dx"] + merged["vy"] * merged["dy"]) / merged["dist_to_ball"]
     merged["pressing"] = (merged["dist_to_ball"] <= distance_threshold) & (merged["speed_toward_ball"] > speed_threshold)
 
-    # --- Aggregate pressing ---
+    # --- Aggregate by rolling window ---
     roll_window = timedelta(milliseconds=time_window_ms)
     press_events = []
 
@@ -172,19 +174,21 @@ def detect_coordinated_presses(
     logger.info("Sample pressing moments:")
     logger.info("\n" + tabulate(press_df.head(10), headers="keys", tablefmt="psql"))
 
-    # --- Plotting ---
+    # --- Plotting: Pressers over time ---
     if not press_df.empty:
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(press_df["time"], press_df["num_pressers"], marker='o', linestyle='-', color="orange")
+        press_df["minute"] = press_df["time"].dt.total_seconds() / 60
+        ax.plot(press_df["minute"], press_df["num_pressers"], marker='o', linestyle='-', color="orange")
         ax.axhline(y=3, color='red', linestyle='--', label="Coordinated Press Threshold (3+)")
         ax.set_title("Number of Players Pressing the Ball Over Time")
-        ax.set_xlabel("Time")
+        ax.set_xlabel("Match Time (minutes)")
         ax.set_ylabel("Number of Pressing Players")
         plt.xticks(rotation=45)
         ax.legend()
         plt.tight_layout()
         plt.show()
 
+    # --- Optional: Draw 1 pitch snapshot ---
     if visual_debug and not press_df.empty:
         logger.info("Showing 1 visual pressing moment for debug")
         pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
@@ -205,8 +209,7 @@ def detect_coordinated_presses(
     return press_df
 
 
-
-
+# --- Example usage ---
 detect_coordinated_presses(
     match_id="61xmh1s2xtwsx4noo7sqj6k2c",
     our_team_id="bw9wm8pqfzcchumhiwdt2w15c",
