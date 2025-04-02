@@ -169,7 +169,10 @@ def detect_coordinated_presses(
         if press_count >= 3:
             press_events.append((time, press_count))
 
+    # Sort pressing events by time
     press_df = pd.DataFrame(press_events, columns=["time", "num_pressers"])
+    press_df = press_df.sort_values("time").reset_index(drop=True)
+
     logger.info(f"Total coordinated pressing traps: {len(press_df)}")
     logger.info("Sample pressing moments:")
     logger.info("\n" + tabulate(press_df.head(10), headers="keys", tablefmt="psql"))
