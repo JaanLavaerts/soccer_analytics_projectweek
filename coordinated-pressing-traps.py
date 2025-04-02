@@ -100,7 +100,8 @@ def detect_coordinated_presses(
     our_team_id,
     distance_threshold=12,
     speed_threshold=1.5,
-    time_window_ms=1000
+    time_window_ms=1000,
+    visual_debug=False
 ):
     logger.info("Loading data from database...")
     events_df = pd.read_sql(f"SELECT * FROM matchevents WHERE match_id = '{match_id}'", conn)
@@ -112,53 +113,66 @@ def detect_coordinated_presses(
     events_df = convert_to_absolute_time(events_df, "timestamp")
     tracking_df = convert_to_absolute_time(tracking_df, "timestamp")
 
+    # --- Get opponent ball moments ---
     opponent_events = events_df[events_df["ball_owning_team"] != our_team_id]
-    opponent_times = opponent_events["abs_time"].unique()
+    opponent_times = opponent_events["abs_time"].dropna().unique()
     logger.info(f"Found {len(opponent_times)} opponent attack moments")
 
     ball_df = tracking_df[tracking_df["player_id"] == "ball"]
     our_players_ids = events_df[
         (events_df["team_id"] == our_team_id) & (events_df["player_id"].notnull())
     ]["player_id"].unique()
-
     our_players_df = tracking_df[tracking_df["player_id"].isin(our_players_ids)]
     logger.info(f"Tracking data contains {len(our_players_ids)} defenders")
 
-    # Compute velocities
+    # --- Compute velocities ---
     our_players_df = our_players_df.sort_values(["player_id", "abs_time"])
     our_players_df["vx"] = our_players_df.groupby("player_id")["x"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
     our_players_df["vy"] = our_players_df.groupby("player_id")["y"].diff() / our_players_df.groupby("player_id")["abs_time"].diff().dt.total_seconds()
 
+    # Merge with ball positions
     merged = our_players_df.merge(ball_df[["abs_time", "x", "y"]], on="abs_time", suffixes=("", "_ball"))
-    merged = merged[merged["abs_time"].isin(opponent_times)]
-    logger.info(f"Tracking merged and filtered to {len(merged)} frames with opponent ball possession")
 
-    # Pressing logic
+    # Keep only frames within ±500ms of opponent possession
+    time_window = timedelta(milliseconds=500)
+    opponent_range = pd.Series(dtype="bool")
+    for t in opponent_times:
+        mask = (merged["abs_time"] >= t - time_window) & (merged["abs_time"] <= t + time_window)
+        opponent_range = opponent_range | mask if not opponent_range.empty else mask
+
+    merged = merged[opponent_range]
+    logger.info(f"Tracking merged and filtered to {len(merged)} frames near opponent ball possession")
+
+    if merged.empty:
+        logger.warning("No overlapping tracking frames with opponent events. Aborting.")
+        return pd.DataFrame()
+
+    # --- Detect pressing ---
     merged["dx"] = merged["x_ball"] - merged["x"]
     merged["dy"] = merged["y_ball"] - merged["y"]
     merged["dist_to_ball"] = np.sqrt(merged["dx"]**2 + merged["dy"]**2)
     merged["speed_toward_ball"] = (merged["vx"] * merged["dx"] + merged["vy"] * merged["dy"]) / merged["dist_to_ball"]
     merged["pressing"] = (merged["dist_to_ball"] <= distance_threshold) & (merged["speed_toward_ball"] > speed_threshold)
 
-    # Rolling window
-    window = timedelta(milliseconds=time_window_ms)
+    # --- Aggregate pressing ---
+    roll_window = timedelta(milliseconds=time_window_ms)
     press_events = []
 
     unique_times = merged["abs_time"].dropna().unique()
     logger.info(f"Checking pressing for {len(unique_times)} unique time frames...")
 
     for time in tqdm(unique_times, desc="Scanning for coordinated presses"):
-        frame = merged[(merged["abs_time"] >= time - window) & (merged["abs_time"] <= time + window)]
+        frame = merged[(merged["abs_time"] >= time - roll_window) & (merged["abs_time"] <= time + roll_window)]
         press_count = frame["pressing"].sum()
         if press_count >= 3:
             press_events.append((time, press_count))
 
     press_df = pd.DataFrame(press_events, columns=["time", "num_pressers"])
-    logger.info(f"\nTotal coordinated pressing traps: {len(press_df)}")
+    logger.info(f"Total coordinated pressing traps: {len(press_df)}")
     logger.info("Sample pressing moments:")
     logger.info("\n" + tabulate(press_df.head(10), headers="keys", tablefmt="psql"))
 
-    # Visualization
+    # --- Plotting ---
     if not press_df.empty:
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.plot(press_df["time"], press_df["num_pressers"], marker='o', linestyle='-', color="orange")
@@ -170,14 +184,31 @@ def detect_coordinated_presses(
         ax.legend()
         plt.tight_layout()
         plt.show()
-    else:
-        logger.info("No coordinated pressing traps found to visualize.")
 
-    print(tabulate(press_df))
+    if visual_debug and not press_df.empty:
+        logger.info("Showing 1 visual pressing moment for debug")
+        pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="white", line_color="black")
+        fig, ax = pitch.draw(figsize=(10, 7))
+
+        first_time = press_df.iloc[0]["time"]
+        frame = merged[(merged["abs_time"] >= first_time - roll_window) & (merged["abs_time"] <= first_time + roll_window)]
+
+        press_players = frame[frame["pressing"]]
+        ax.scatter(frame["x"], frame["y"], label="Defenders", edgecolors="black")
+        ax.scatter(press_players["x"], press_players["y"], color="red", label="Pressing")
+        ball = frame[["x_ball", "y_ball"]].iloc[0]
+        ax.scatter(ball["x_ball"], ball["y_ball"], color="blue", label="Ball", s=80)
+        ax.legend()
+        ax.set_title(f"Pressing Trap Snapshot\nTime: {first_time}")
+        plt.show()
+
+    return press_df
+
 
 
 
 detect_coordinated_presses(
     match_id="61xmh1s2xtwsx4noo7sqj6k2c",
-    our_team_id="bw9wm8pqfzcchumhiwdt2w15c"
+    our_team_id="bw9wm8pqfzcchumhiwdt2w15c",
+    visual_debug=True
 )
