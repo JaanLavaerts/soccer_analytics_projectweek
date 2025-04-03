@@ -1,51 +1,62 @@
-# How does defensive compactness relate to the opponent's success in breaking through?
+# **How does defensive compactness relate to the opponent’s success in breaking through?**
 
-![Defensive Compactness and Breakthrough Detection](breakthrough_analysis.gif)
+### **Overview**
 
-## Overview
+This Python tool analyzes soccer tracking data to measure **defensive compactness** and detect moments when opposing attackers **break through** the defensive structure. It processes player and ball tracking data to:
 
-The approach involves analyzing tracking data to measure defensive compactness and detect moments when attackers successfully penetrate the defensive shape. It does so by:
+- Calculate the **defensive shape** using convex hulls
+- Identify **penetrations** (attackers inside the defensive zone)
+- Visualize defensive organization and breakthrough moments
 
-- Gathering tracking data from a match
-- Filtering and processing the relevant time frames
-- Measuring defensive compactness using convex hulls and distance metrics
-- Identifying moments when attackers break through the defense
-- Visualizing the results with animations
+### **How It Works**
 
-## Key Steps
+#### **Data Processing**
 
-1. **Data Collection**
+- **Input:** Match tracking data (player positions, ball location)
+- **Filters:**
+  - Defensive team players
+  - Attacking team players
+  - Ball movement
+- **Time windows:** Analyzes data in fixed intervals (e.g., 0.5s steps)
 
-   - Retrieves player tracking data from a database for a given match.
+#### **Compactness Metrics**
 
-2. **Processing and Filtering**
+For each time window, the tool computes:  
+✔ **Convex Hull Area** – Measures the space covered by defenders (smaller = more compact)  
+✔ **Average Distance** – Mean distance between defenders (lower = tighter marking)  
+✔ **Attackers Inside Hull** – Counts how many opponents penetrate the defensive shape
 
-   - Focuses on specific time frames, filtering defensive and attacking teams separately.
-   - Extracts ball movement data.
+#### **Breakthrough Detection**
 
-3. **Compactness Analysis**
+- Highlights **high-risk sequences** (multiple attackers breaking through)
 
-   - Calculates the defensive shape using a convex hull.
-   - Measures compactness using area and player distances.
-   - Detects attackers and the ball inside the defensive shape.
+#### **Visualization**
 
-4. **Breakthrough Detection**
+- **Animated Pitch View:**
+  - Defenders (blue) & attackers (red)
+  - Convex hull (red outline)
+  - Breakthroughs (yellow circles)
+- **Time-Series Charts:**
+  - Hull area & compactness trends
+  - Attacker penetration count
 
-   - Identifies time windows where attackers enter the defensive shape.
-   - Determines the most significant breakthrough moments.
+### **Key Insights**
 
-5. **Visualization**
-   - Animates player movements, defensive shapes, and breakthroughs.
-   - Plots compactness metrics over time.
+**Strong Defenses** → Small hull area, few/no attackers inside  
+ **Vulnerable Moments** → Hull expands rapidly, multiple breaches  
+ **Transition Weaknesses** → Defensive shape breaks during counters
 
-## Insights Gained
+### **Usage**
 
-A well-organized defense should keep a low hull area and prevent attackers from frequently entering it.
+**Specify Match & Time Frame**
 
-Defensive Shape Breach – The convex hull represents the outer boundary of the defensive structure. An attacker inside this zone indicates a penetration of the defensive line, which can create goal-scoring opportunities.
+```python
+match_id = "your_match_id" # e.g., 6y80kic6abtlkzmkr4oiejkt0
+defending_team_id = "team_id" # e.g., bw9wm8pqfzcchumhiwdt2w15c
+start_time = 300  # Start at 5:00
+end_time = 420    # End at 7:00
+```
 
-Higher Threat Levels – If an attacker is inside the hull, they are closer to goal and likely have fewer defenders between them and the goalkeeper.
+### **Example Output**
 
-Defensive Gaps – This could indicate a lack of defensive compactness, poor marking, or failure to track runners.
-
-Passing and Shooting Opportunities – Attackers inside the hull have more time and space to receive passes, shoot, or create plays.
+![Defensive Compactness Analysis](compactness_analysis.gif)
