@@ -1,5 +1,7 @@
 # How does defensive compactness relate to the opponent's success in breaking through?
 
+![Defensive Compactness and Breakthrough Detection](breakthrough_analysis.gif)
+
 ## Overview
 
 The approach involves analyzing tracking data to measure defensive compactness and detect moments when attackers successfully penetrate the defensive shape. It does so by:
@@ -23,7 +25,7 @@ The approach involves analyzing tracking data to measure defensive compactness a
 
 3. **Compactness Analysis**
 
-   - Calculates the defensive shape using a convex hull (or a fallback bounding box if necessary).
+   - Calculates the defensive shape using a convex hull.
    - Measures compactness using area and player distances.
    - Detects attackers and the ball inside the defensive shape.
 
@@ -38,8 +40,10 @@ The approach involves analyzing tracking data to measure defensive compactness a
 
 ## Insights Gained
 
-- A tighter defensive shape generally reduces breakthrough occurrences.
-- Ball movement and positioning relative to the defense can indicate vulnerabilities.
-- Key moments of defensive lapses can be pinpointed for tactical analysis.
+Defensive Shape Breach – The convex hull represents the outer boundary of the defensive structure. An attacker inside this zone indicates a penetration of the defensive line, which can create goal-scoring opportunities.
 
-This analysis helps teams and analysts understand how defensive structure impacts game outcomes and identify areas for improvement in defensive strategies.
+Higher Threat Levels – If an attacker is inside the hull, they are closer to goal and likely have fewer defenders between them and the goalkeeper.
+
+Defensive Gaps – This could indicate a lack of defensive compactness, poor marking, or failure to track runners.
+
+Passing and Shooting Opportunities – Attackers inside the hull have more time and space to receive passes, shoot, or create plays.
