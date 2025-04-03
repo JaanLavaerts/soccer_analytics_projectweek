@@ -40,6 +40,8 @@ The approach involves analyzing tracking data to measure defensive compactness a
 
 ## Insights Gained
 
+A well-organized defense should keep a low hull area and prevent attackers from frequently entering it.
+
 Defensive Shape Breach – The convex hull represents the outer boundary of the defensive structure. An attacker inside this zone indicates a penetration of the defensive line, which can create goal-scoring opportunities.
 
 Higher Threat Levels – If an attacker is inside the hull, they are closer to goal and likely have fewer defenders between them and the goalkeeper.
